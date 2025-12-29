@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sphere Master 3D</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Base Styles */
+        body { margin: 0; overflow: hidden; background: #050510; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        
+        /* Layout Containers */
+        #ui { 
+            position: absolute; top: 15px; left: 15px; color: #fff; pointer-events: none; 
+            z-index: 10; width: calc(100% - 30px); display: flex; justify-content: space-between;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Glassmorphism Components */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+
+        .score-display {
+            font-family: 'Courier New', Courier, monospace;
+            padding: 8px 15px;
+            border: 1px solid rgba(0, 242, 255, 0.3);
+            color: #fbff00;
+            font-weight: bold;
+            pointer-events: auto;
+            min-width: 150px;
+        }
+
+        /* Overlays */
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: radial-gradient(circle, rgba(20, 20, 60, 0.2) 0%, rgba(5, 5, 15, 0.6) 100%); 
+            backdrop-filter: blur(4px);
+            color: white; transition: opacity 0.5s;
+            text-align: center; z-index: 100;
+        }
+
+        /* Collection Gallery */
+        #collection-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(5, 5, 20, 0.95); backdrop-filter: blur(15px);
+            color: white; z-index: 400; padding: 20px;
+        }
+
+        .collection-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 15px;
+            width: 100%;
+            max-width: 600px;
+            margin: 20px 0;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .collection-item {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.3;
+            position: relative;
+        }
+        .collection-item.unlocked {
+            opacity: 1;
+            background: rgba(0, 242, 255, 0.1);
+            border-color: rgba(0, 242, 255, 0.4);
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.1);
+        }
+        .collection-item.artifact {
+            border: 2px solid #ff00ff;
+            background: linear-gradient(45deg, rgba(255, 0, 255, 0.1), rgba(0, 242, 255, 0.1));
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.3);
+        }
+
+        .item-count {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #00f2ff;
+            color: #000;
+            font-weight: 900;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+        }
+
+        /* Settings/Pause Menu */
+        #pause-menu {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(15px);
+            color: white; z-index: 300; overflow-y: auto; padding: 40px 0;
+        }
+
+        #aim-ui {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: flex-end; align-items: center;
+            padding-bottom: 30px; color: white; pointer-events: none; z-index: 90;
+        }
+
+        /* Prize Win Popup */
+        #prize-popup {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0);
+            z-index: 200; pointer-events: none; text-align: center; transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #prize-popup.show { transform: translate(-50%, -50%) scale(1); }
+
+        /* Mystery Box Overlay */
+        #mystery-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 500; display: none;
+            flex-direction: column; align-items: center; justify-content: center;
+            color: white;
+        }
+
+        .box-shake {
+            animation: shake 0.5s infinite;
+        }
+        @keyframes shake {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(5deg); }
+            50% { transform: rotate(0deg); }
+            75% { transform: rotate(-5deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        .arcade-header {
+            background: rgba(255, 0, 204, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 15px 40px;
+            margin-bottom: 20px;
+            transform: skewX(-5deg);
+        }
+
+        .btn {
+            background: rgba(0, 242, 255, 0.2);
+            backdrop-filter: blur(5px);
+            color: #fff;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 900;
+            margin-top: 8px;
+            pointer-events: auto;
+            border: 1px solid rgba(0, 242, 255, 0.5);
+            text-transform: uppercase;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+        .btn:hover { background: rgba(0, 242, 255, 0.4); }
+        .btn:active { transform: scale(0.95); }
+        
+        .btn-icon {
+            width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+            padding: 0; border-radius: 50%;
+        }
+
+        .theme-card {
+            cursor: pointer;
+            transition: transform 0.2s, border-color 0.2s;
+            border: 2px solid transparent;
+        }
+        .theme-card.active {
+            border-color: #00f2ff;
+            background: rgba(0, 242, 255, 0.1);
+        }
+
+        .hint-text {
+            position: absolute; bottom: 20px; width: 100%; text-align: center;
+            color: rgba(251, 255, 0, 0.7); font-family: monospace; letter-spacing: 1.5px;
+            font-size: 0.8rem;
+            animation: pulse 2s infinite;
+        }
+
+        input[type="range"] {
+            accent-color: #00f2ff;
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+    <!-- Heads Up Display -->
+    <div id="ui">
+        <div>
+            <div class="score-display glass-panel">
+                <div class="text-[10px] uppercase opacity-50 tracking-tighter text-white">Prize Pot</div>
+                <div class="text-xl" id="score">NONE</div>
+            </div>
+            <div class="mt-2 text-[10px] font-bold text-white uppercase tracking-widest bg-white/5 p-1 px-3 rounded-full inline-block backdrop-blur-sm border border-white/10">
+                Last Win: <span id="best" class="text-pink-400">-</span>
+            </div>
+        </div>
+        <div class="flex flex-col gap-2 items-end">
+            <div id="pause-btn" class="btn btn-icon glass-panel" style="pointer-events: auto;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mystery Box Overlay -->
+    <div id="mystery-overlay">
+        <div class="text-yellow-400 font-black tracking-widest text-sm mb-4">MYSTERY BOX COLLECTED!</div>
+        <div id="mystery-box-graphic" class="text-9xl mb-8 box-shake">🎁</div>
+        <div id="mystery-reveal-text" class="text-2xl font-black italic mb-8 opacity-50">TAP TO UNLOCK RARE ITEM</div>
+        <div id="mystery-btn" class="btn px-20 py-6 text-2xl bg-yellow-500/20 text-yellow-400 border-yellow-400">OPEN BOX</div>
+    </div>
+
+    <!-- Pause / Settings Menu -->
+    <div id="pause-menu">
+        <div class="arcade-header">
+            <h2 class="text-3xl font-black italic text-white">PAUSE MENU</h2>
+        </div>
+        
+        <div class="w-full max-w-md px-8 space-y-6">
+            <div class="flex flex-col gap-2">
+                <div id="resume-btn" class="btn text-xl bg-cyan-500/30 text-white border-cyan-400">RESUME</div>
+                <div id="restart-game-btn" class="btn bg-white/10 text-white border-white/20">RESTART ROUND</div>
+                <div id="main-menu-btn" class="btn bg-white/5 text-white/60 border-white/10">MAIN MENU</div>
+            </div>
+
+            <div class="space-y-4 pt-4 border-t border-white/10">
+                <h3 class="text-cyan-400 text-xs font-bold tracking-widest uppercase">Visual Style</h3>
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="theme-card glass-panel p-3 text-center active" onclick="setTheme('CYBERPUNK')" id="theme-cyberpunk">
+                        <div class="w-full h-8 bg-cyan-500/40 rounded mb-2"></div>
+                        <span class="text-[10px] font-bold">CYBER</span>
+                    </div>
+                    <div class="theme-card glass-panel p-3 text-center" onclick="setTheme('MIDNIGHT')" id="theme-midnight">
+                        <div class="w-full h-8 bg-yellow-600/40 rounded mb-2"></div>
+                        <span class="text-[10px] font-bold">GOLD</span>
+                    </div>
+                    <div class="theme-card glass-panel p-3 text-center" onclick="setTheme('RETRO')" id="theme-retro">
+                        <div class="w-full h-8 bg-pink-600/40 rounded mb-2"></div>
+                        <span class="text-[10px] font-bold">RETRO</span>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <div class="setting-row">
+                        <span class="text-sm font-bold">Neon Bloom</span>
+                        <input type="checkbox" id="setting-bloom" checked class="w-5 h-5 accent-cyan-400" onchange="updateSettings()">
+                    </div>
+                    <div class="py-2">
+                        <div class="flex justify-between text-[10px] font-bold uppercase opacity-60 mb-1">
+                            <span>Sensitivity</span>
+                            <span id="label-sensitivity">1.0x</span>
+                        </div>
+                        <input type="range" id="setting-sensitivity" min="0.1" max="2.5" step="0.1" value="1.0" oninput="updateSettings()">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collection Screen -->
+    <div id="collection-screen">
+        <div class="arcade-header border-cyan-400">
+            <h2 class="text-3xl font-black italic text-white">MY COLLECTION</h2>
+        </div>
+        <div class="collection-grid" id="collection-grid">
+            <!-- Populated via JS -->
+        </div>
+        <div id="close-collection-btn" class="btn text-xl px-16 py-4 bg-white/10 text-white">BACK</div>
+    </div>
+
+    <!-- Prize Popup -->
+    <div id="prize-popup">
+        <div class="arcade-header border-yellow-400 border-2">
+            <div class="text-yellow-400 text-xs font-bold tracking-[0.3em] mb-1">UNLOCKED</div>
+            <h2 id="popup-prize-name" class="text-5xl font-black italic text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]">ITEM</h2>
+        </div>
+        <div id="popup-prize-count" class="text-white font-bold text-xl uppercase tracking-widest">Total: 0</div>
+    </div>
+
+    <!-- Main Menu Overlay -->
+    <div id="overlay">
+        <div id="overlay-content">
+            <div class="arcade-header">
+                <h1 id="main-title" class="text-5xl font-black italic tracking-tighter" style="color: #fff; text-shadow: 0 0 20px rgba(0, 242, 255, 0.5);">SPHERE MASTER</h1>
+            </div>
+            <p id="overlay-status" class="text-lg mb-6 font-mono text-cyan-300 opacity-80 uppercase">Prizes change every round!</p>
+            <div class="flex flex-col gap-3 items-center">
+                <div class="text-xl font-black italic bg-white/10 text-white px-8 py-4 border border-white/20 rounded-xl uppercase animate-pulse backdrop-blur-md" style="pointer-events: auto; cursor: pointer;" id="start-click-area">
+                    PRESS SPACE TO START
+                </div>
+                <div id="open-collection-btn" class="btn bg-yellow-400/10 text-yellow-400 border-yellow-400/30 w-full" style="pointer-events: auto;">MY COLLECTION</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gameplay Controls -->
+    <div id="aim-ui">
+        <div class="mb-4 flex gap-4 pointer-events-auto items-end">
+             <div id="inspect-btn" class="btn bg-white/5 text-white/50 text-[10px] py-1 px-3 border-white/10 mb-4">MACHINE VIEW</div>
+             <div class="flex flex-col items-center">
+                <div class="text-lg font-black text-white italic drop-shadow-lg uppercase tracking-tight mb-2 opacity-80">Slide to Target</div>
+                <div id="drop-btn" class="btn text-2xl px-12 py-5 bg-yellow-400/20 text-yellow-300 border-yellow-400/50">RELEASE!</div>
+             </div>
+             <div class="w-24"></div>
+        </div>
+    </div>
+
+    <div class="hint-text" id="footer-hint">DRAG TO LOOK • PRESS SPACE TO PLAY</div>
+
+    <script>
+        /**
+         * GLOBAL CONSTANTS & STATE
+         */
+        const THEMES = {
+            CYBERPUNK: { bg: 0x020208, neon: 0x00f2ff, accent: 0xff00ff, gold: 0xffd700, pin: 0xffffff, surface: 0x020208 },
+            MIDNIGHT: { bg: 0x050505, neon: 0xd4af37, accent: 0xffffff, gold: 0xffe082, pin: 0x333333, surface: 0x111111 },
+            RETRO: { bg: 0x110022, neon: 0xff00cc, accent: 0x00ffcc, gold: 0xffff00, pin: 0x5500ff, surface: 0x220044 }
+        };
+
+        const ALL_PRIZES = [
+            { name: "DUST", icon: "☁️" },
+            { name: "CANDY", icon: "🍬" },
+            { name: "PLUSHIE", icon: "🧸" },
+            { name: "GOLD WATCH", icon: "⌚" },
+            { name: "GEMSTONE", icon: "💎" },
+            { name: "TROPHY", icon: "🏆" },
+            { name: "MYSTERY BOX", icon: "🎁", special: true },
+            { name: "VINYL", icon: "💿" },
+            { name: "NEON SIGN", icon: "💡" },
+            { name: "ARCADE KEY", icon: "🗝️" },
+            { name: "ENERGY DRINK", icon: "🥤" },
+            { name: "PIXEL ART", icon: "🎨" }
+        ];
+
+        const ARTIFACT_PRIZES = [
+            { name: "NEON KATANA", icon: "🗡️", rarity: "ARTIFACT" },
+            { name: "CYBER CORE", icon: "⚛️", rarity: "ARTIFACT" },
+            { name: "GOLDEN SKULL", icon: "💀", rarity: "ARTIFACT" },
+            { name: "PHOENIX WING", icon: "🪽", rarity: "ARTIFACT" },
+            { name: "QUANTUM CHIP", icon: "💾", rarity: "ARTIFACT" }
+        ];
+
+        const CONFIG = {
+            BOARD: { WIDTH: 20, DEPTH: 110 },
+            PHYSICS: { GRAVITY: 18, BOUNCE: 0.72, FRICTION: 0.996, RADIUS: 0.45, LAUNCH_SPEED: -32 },
+            SLOT_COUNT: 7,
+            SETTINGS: { sensitivity: 1.0, bloom: true }
+        };
+
+        const STORAGE_KEYS = {
+            THEME: 'sphereMasterTheme_v3',
+            COLLECTION: 'sphereMasterCollection_v3',
+            SETTINGS: 'sphereMasterSettings_v3',
+            LAST_PRIZE: 'sphereMasterLastPrize_v3'
+        };
+
+        let activeThemeKey = localStorage.getItem(STORAGE_KEYS.THEME) || 'CYBERPUNK';
+        let currentTheme = THEMES[activeThemeKey];
+
+        let scene, camera, renderer, boardGroup, obstacles = [], holes = [];
+        let pins = []; 
+        let balls = []; 
+        let clock = new THREE.Clock();
+        let gameState = 'MENU';
+        let currentPrize = "NONE";
+        let currentActivePrizes = [];
+        let isPaused = false;
+        
+        let cameraOrbit = { radius: 60, theta: Math.PI / 4, phi: Math.PI / 3, target: new THREE.Vector3(0, 5, -40) };
+        let inputState = { isDragging: false, lastPos: { x: 0, y: 0 } };
+        
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+        let confettiParticles = [];
+        let userInventory = JSON.parse(localStorage.getItem(STORAGE_KEYS.COLLECTION) || "{}");
+
+        function init() {
+            const savedSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS) || "{}");
+            if (savedSettings.sensitivity) CONFIG.SETTINGS.sensitivity = savedSettings.sensitivity;
+            if (savedSettings.bloom !== undefined) CONFIG.SETTINGS.bloom = savedSettings.bloom;
+
+            setupScene();
+            setupLights();
+            createGameObjects();
+            bindEvents();
+            resetBallForAiming();
+            applyThemeUI();
+            updateSettingsUI();
+            animate();
+            
+            document.getElementById('best').innerText = localStorage.getItem(STORAGE_KEYS.LAST_PRIZE) || "-";
+            updateCollectionUI();
+        }
+
+        function setupScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(currentTheme.bg);
+            scene.fog = new THREE.Fog(currentTheme.bg, 40, 160);
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+        }
+
+        function setupLights() {
+            scene.add(new THREE.AmbientLight(0x4040ff, 0.4));
+            const pointLight = new THREE.PointLight(currentTheme.accent, 1.5, 100);
+            pointLight.position.set(0, 30, -50);
+            pointLight.name = "accentLight";
+            scene.add(pointLight);
+            const topLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            topLight.position.set(15, 60, 20);
+            topLight.castShadow = true;
+            topLight.shadow.mapSize.set(1024, 1024);
+            scene.add(topLight);
+        }
+
+        function createBall(isSecondary = false) {
+            const ballMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(CONFIG.PHYSICS.RADIUS, 32, 32), 
+                new THREE.MeshStandardMaterial({ 
+                    color: isSecondary ? currentTheme.accent : 0xffffff, 
+                    metalness: 0.9, roughness: 0.05, 
+                    emissive: isSecondary ? currentTheme.accent : currentTheme.neon, 
+                    emissiveIntensity: 0.2 
+                })
+            );
+            ballMesh.castShadow = true;
+            scene.add(ballMesh);
+            const ballData = { mesh: ballMesh, velocity: new THREE.Vector3(), isFalling: false, isSecondary: isSecondary };
+            balls.push(ballData);
+            return ballData;
+        }
+
+        function createGameObjects() {
+            boardGroup = new THREE.Group();
+            scene.add(boardGroup);
+            const { WIDTH, DEPTH } = CONFIG.BOARD;
+            const surface = new THREE.Mesh(
+                new THREE.PlaneGeometry(WIDTH, DEPTH), 
+                new THREE.MeshStandardMaterial({ color: currentTheme.surface, roughness: 0.1, metalness: 0.3 })
+            );
+            surface.rotation.x = -Math.PI / 2;
+            surface.position.z = -DEPTH / 2 + 10;
+            surface.receiveShadow = true;
+            surface.name = "boardSurface";
+            boardGroup.add(surface);
+
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x0a0a1a, roughness: 0.2, metalness: 0.5 });
+            const sideWall = new THREE.BoxGeometry(2, 12, DEPTH + 10);
+            [-1, 1].forEach(dir => {
+                const wall = new THREE.Mesh(sideWall, wallMat);
+                wall.position.set(dir * (WIDTH / 2 + 1), 4, -DEPTH / 2 + 5);
+                boardGroup.add(wall);
+            });
+
+            const rows = 19, cols = 11;
+            const colSpacing = WIDTH / (cols + 1), rowSpacing = 3.8;
+            for (let r = 0; r < rows; r++) {
+                const isEven = r % 2 === 0;
+                const rowCols = isEven ? cols : cols - 1;
+                const startX = isEven ? -WIDTH / 2 + colSpacing : -WIDTH / 2 + colSpacing * 1.5;
+                for (let c = 0; c < rowCols; c++) {
+                    const pinPos = new THREE.Vector3(startX + (c * colSpacing), 1.25, -15 - (r * rowSpacing));
+                    const isSpecial = r === 9 && (c === 2 || c === rowCols - 3);
+                    const pin = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.18, 0.18, 2.5, 12),
+                        new THREE.MeshStandardMaterial({ 
+                            color: isSpecial ? currentTheme.accent : currentTheme.pin, 
+                            emissive: isSpecial ? currentTheme.accent : currentTheme.neon, 
+                            emissiveIntensity: CONFIG.SETTINGS.bloom ? (isSpecial ? 1.0 : 0.4) : 0 
+                        })
+                    );
+                    pin.position.copy(pinPos);
+                    pin.isSpecial = isSpecial;
+                    boardGroup.add(pin);
+                    obstacles.push(pin);
+                    pins.push(pin);
+                }
+            }
+
+            const spacing = WIDTH / CONFIG.SLOT_COUNT;
+            for(let i=0; i<CONFIG.SLOT_COUNT; i++) {
+                const x = -WIDTH / 2 + (i * spacing) + (spacing / 2);
+                const isMiddle = i === Math.floor(CONFIG.SLOT_COUNT/2);
+                const slot = new THREE.Group();
+                slot.position.set(x, 0, -DEPTH + 15);
+                const ring = new THREE.Mesh(
+                    new THREE.TorusGeometry(0.8, 0.08, 16, 32), 
+                    new THREE.MeshStandardMaterial({ color: currentTheme.neon, emissive: currentTheme.neon, emissiveIntensity: 0.6, transparent: true, opacity: 0.9 })
+                );
+                ring.rotation.x = Math.PI / 2;
+                ring.name = "holeRing";
+                ring.isMiddle = isMiddle;
+                slot.add(ring);
+                boardGroup.add(slot);
+                holes.push(slot);
+                const div = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 10), new THREE.MeshStandardMaterial({ color: 0x222244, transparent: true, opacity: 0.3 }));
+                div.position.set(x - spacing / 2, 2, -DEPTH + 17);
+                boardGroup.add(div);
+                obstacles.push(div);
+            }
+
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ color: 0x010103 }));
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -5;
+            scene.add(floor);
+        }
+
+        function randomizePrizes() {
+            const shuffled = [...ALL_PRIZES].sort(() => Math.random() - 0.5);
+            currentActivePrizes = shuffled.slice(0, CONFIG.SLOT_COUNT);
+            // Ensure Mystery Box is always available in one slot if not present
+            if (!currentActivePrizes.some(p => p.name === "MYSTERY BOX")) {
+                currentActivePrizes[Math.floor(Math.random() * currentActivePrizes.length)] = ALL_PRIZES.find(p => p.name === "MYSTERY BOX");
+            }
+            holes.forEach((slot, i) => {
+                slot.prizeName = currentActivePrizes[i].name;
+                const ring = slot.children.find(c => c.name === "holeRing");
+                if (ring) {
+                    const color = slot.prizeName === "MYSTERY BOX" ? currentTheme.gold : currentTheme.neon;
+                    ring.material.color.set(color);
+                    ring.material.emissive.set(color);
+                }
+            });
+        }
+
+        function triggerScore(prizeName, hole, ballData) {
+            currentPrize = prizeName;
+            
+            if (prizeName === "MYSTERY BOX") {
+                // Open Mystery Box Sequence
+                handleMysteryBox();
+            } else {
+                userInventory[prizeName] = (userInventory[prizeName] || 0) + 1;
+                saveAndDisplayScore(prizeName, hole);
+            }
+
+            hole.collected = true; ballData.isFalling = true;
+            const startPos = ballData.mesh.position.clone();
+            let progress = 0;
+            const anim = setInterval(() => {
+                if (isPaused) return;
+                progress += 0.05;
+                if (progress >= 1) {
+                    clearInterval(anim); ballData.mesh.visible = false;
+                    if (balls.every(b => b.isFalling || !b.mesh.visible)) {
+                        if (prizeName !== "MYSTERY BOX") setTimeout(gameOver, 1500);
+                    }
+                } else {
+                    ballData.mesh.position.lerpVectors(startPos, new THREE.Vector3(hole.position.x, -8, hole.position.z), progress);
+                }
+            }, 16);
+        }
+
+        function handleMysteryBox() {
+            gameState = 'OPENING_BOX';
+            isPaused = true;
+            const overlay = document.getElementById('mystery-overlay');
+            const boxBtn = document.getElementById('mystery-btn');
+            const graphic = document.getElementById('mystery-box-graphic');
+            const revealText = document.getElementById('mystery-reveal-text');
+            
+            overlay.style.display = 'flex';
+            graphic.innerText = '🎁';
+            revealText.innerText = 'TAP TO UNLOCK RARE ITEM';
+            revealText.style.opacity = '0.5';
+            boxBtn.style.display = 'block';
+
+            boxBtn.onclick = () => {
+                boxBtn.style.display = 'none';
+                graphic.innerText = '✨';
+                revealText.innerText = 'REVEALING...';
+                revealText.classList.add('animate-pulse');
+
+                setTimeout(() => {
+                    const artifact = ARTIFACT_PRIZES[Math.floor(Math.random() * ARTIFACT_PRIZES.length)];
+                    currentPrize = artifact.name;
+                    userInventory[artifact.name] = (userInventory[artifact.name] || 0) + 1;
+                    
+                    graphic.innerText = artifact.icon;
+                    revealText.innerText = `YOU FOUND: ${artifact.name}!`;
+                    revealText.classList.remove('animate-pulse');
+                    revealText.style.opacity = '1';
+                    revealText.style.color = '#ff00ff';
+
+                    localStorage.setItem(STORAGE_KEYS.COLLECTION, JSON.stringify(userInventory));
+                    updateCollectionUI();
+                    spawnConfetti(new THREE.Vector3(0,0,-90));
+
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        isPaused = false;
+                        gameOver();
+                    }, 2500);
+                }, 1500);
+            };
+        }
+
+        function saveAndDisplayScore(prizeName, hole) {
+            localStorage.setItem(STORAGE_KEYS.COLLECTION, JSON.stringify(userInventory));
+            document.getElementById('score').innerText = prizeName;
+            document.getElementById('popup-prize-name').innerText = prizeName;
+            document.getElementById('popup-prize-count').innerText = `Total Owned: ${userInventory[prizeName]}`;
+            setTimeout(() => {
+                document.getElementById('prize-popup').classList.add('show');
+                spawnConfetti(hole.position);
+            }, 200);
+        }
+
+        function gameOver() {
+            if (gameState === 'GAMEOVER') return;
+            gameState = 'GAMEOVER';
+            localStorage.setItem(STORAGE_KEYS.LAST_PRIZE, currentPrize);
+            document.getElementById('best').innerText = currentPrize;
+            document.getElementById('prize-popup').classList.remove('show');
+            updateUIState();
+        }
+
+        function updateCollectionUI() {
+            const grid = document.getElementById('collection-grid');
+            grid.innerHTML = '';
+            
+            // Show Standard and Artifact items
+            const fullList = [...ALL_PRIZES, ...ARTIFACT_PRIZES];
+            
+            fullList.forEach(item => {
+                const count = userInventory[item.name] || 0;
+                const hasItem = count > 0;
+                const div = document.createElement('div');
+                div.className = `collection-item ${hasItem ? 'unlocked' : ''} ${item.rarity === 'ARTIFACT' ? 'artifact' : ''}`;
+                div.innerHTML = `
+                    ${hasItem ? `<div class="item-count">${count}</div>` : ''}
+                    <div class="text-3xl mb-1">${hasItem ? item.icon : "❓"}</div>
+                    <div class="text-center px-1 font-bold" style="font-size: 8px">${hasItem ? item.name : "???"}</div>
+                    ${item.rarity === 'ARTIFACT' && hasItem ? '<div class="text-[6px] text-pink-500 font-black">ARTIFACT</div>' : ''}
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        // ... Standard Three.js boiler-plate logic remains consistent with previous version ...
+
+        function setTheme(key) {
+            activeThemeKey = key;
+            currentTheme = THEMES[key];
+            localStorage.setItem(STORAGE_KEYS.THEME, key);
+            scene.background.set(currentTheme.bg);
+            scene.fog.color.set(currentTheme.bg);
+            const accentLight = scene.getObjectByName("accentLight");
+            if (accentLight) accentLight.color.set(currentTheme.accent);
+            const surface = boardGroup.getObjectByName("boardSurface");
+            if (surface) surface.material.color.set(currentTheme.surface);
+            pins.forEach(pin => {
+                if (!pin.isSpecial) { pin.material.color.set(currentTheme.pin); pin.material.emissive.set(currentTheme.neon); }
+                else { pin.material.color.set(currentTheme.accent); pin.material.emissive.set(currentTheme.accent); }
+            });
+            holes.forEach(slot => {
+                slot.children.forEach(child => {
+                    if (child.name === "holeRing") {
+                        const color = slot.prizeName === "MYSTERY BOX" ? currentTheme.gold : currentTheme.neon;
+                        child.material.color.set(color); child.material.emissive.set(color);
+                    }
+                });
+            });
+            applyThemeUI();
+        }
+
+        function updateSettingsUI() {
+            document.getElementById('setting-bloom').checked = CONFIG.SETTINGS.bloom;
+            document.getElementById('setting-sensitivity').value = CONFIG.SETTINGS.sensitivity;
+            document.getElementById('label-sensitivity').innerText = CONFIG.SETTINGS.sensitivity + "x";
+        }
+
+        function updateSettings() {
+            CONFIG.SETTINGS.bloom = document.getElementById('setting-bloom').checked;
+            CONFIG.SETTINGS.sensitivity = parseFloat(document.getElementById('setting-sensitivity').value);
+            pins.forEach(pin => {
+                pin.material.emissiveIntensity = CONFIG.SETTINGS.bloom ? (pin.isSpecial ? 1.0 : 0.4) : 0;
+            });
+            updateSettingsUI();
+            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify({
+                sensitivity: CONFIG.SETTINGS.sensitivity,
+                bloom: CONFIG.SETTINGS.bloom
+            }));
+        }
+
+        function applyThemeUI() {
+            document.querySelectorAll('.theme-card').forEach(card => card.classList.remove('active'));
+            const activeCard = document.getElementById(`theme-${activeThemeKey.toLowerCase()}`);
+            if (activeCard) activeCard.classList.add('active');
+        }
+
+        function bindEvents() {
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            window.addEventListener('pointerdown', e => {
+                if (isPaused && gameState !== 'OPENING_BOX') return;
+                inputState.isDragging = true;
+                inputState.lastPos = { x: e.clientX, y: e.clientY };
+                if (gameState === 'INSPECTING' || (gameState === 'MENU' && document.getElementById('overlay-content').style.display === 'none')) {
+                    exitInspection();
+                }
+            });
+            window.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', () => inputState.isDragging = false);
+            window.addEventListener('keydown', e => {
+                if (isPaused && e.code !== 'Escape') return;
+                if (e.code === 'Space') {
+                    if (gameState === 'MENU' || gameState === 'GAMEOVER') startAiming();
+                    else if (gameState === 'AIMING') releaseBall();
+                }
+                if (e.code === 'Escape') togglePause();
+            });
+            document.getElementById('drop-btn').onclick = releaseBall;
+            document.getElementById('inspect-btn').onclick = enterInspection;
+            document.getElementById('pause-btn').onclick = togglePause;
+            document.getElementById('resume-btn').onclick = togglePause;
+            document.getElementById('start-click-area').onclick = () => { if (gameState === 'MENU' || gameState === 'GAMEOVER') startAiming(); };
+            document.getElementById('restart-game-btn').onclick = () => { isPaused = false; document.getElementById('pause-menu').style.display = 'none'; startAiming(); };
+            document.getElementById('main-menu-btn').onclick = () => { isPaused = false; document.getElementById('pause-menu').style.display = 'none'; gameState = 'MENU'; updateUIState(); cameraOrbit.theta = Math.PI/4; cameraOrbit.phi = Math.PI/3; };
+            document.getElementById('open-collection-btn').onclick = () => { document.getElementById('collection-screen').style.display = 'flex'; updateCollectionUI(); };
+            document.getElementById('close-collection-btn').onclick = () => { document.getElementById('collection-screen').style.display = 'none'; };
+        }
+
+        function onPointerMove(e) {
+            if (!inputState.isDragging || (isPaused && gameState !== 'OPENING_BOX')) return;
+            if (['MENU', 'GAMEOVER', 'INSPECTING'].includes(gameState)) {
+                cameraOrbit.theta -= (e.clientX - inputState.lastPos.x) * 0.005 * CONFIG.SETTINGS.sensitivity;
+                cameraOrbit.phi = THREE.MathUtils.clamp(cameraOrbit.phi - (e.clientY - inputState.lastPos.y) * 0.005 * CONFIG.SETTINGS.sensitivity, 0.1, Math.PI / 2 - 0.1);
+            } else if (gameState === 'AIMING') {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                const point = new THREE.Vector3();
+                raycaster.ray.intersectPlane(groundPlane, point);
+                if (balls.length > 0) {
+                    balls[0].mesh.position.x = THREE.MathUtils.clamp(point.x, -CONFIG.BOARD.WIDTH/2 + CONFIG.PHYSICS.RADIUS, CONFIG.BOARD.WIDTH/2 - CONFIG.PHYSICS.RADIUS);
+                }
+            }
+            inputState.lastPos = { x: e.clientX, y: e.clientY };
+        }
+
+        function togglePause() {
+            if (gameState === 'MENU' || gameState === 'GAMEOVER' || gameState === 'OPENING_BOX') return;
+            isPaused = !isPaused;
+            document.getElementById('pause-menu').style.display = isPaused ? 'flex' : 'none';
+        }
+
+        function resetBallForAiming() {
+            balls.forEach(b => scene.remove(b.mesh));
+            balls = [];
+            const mainBall = createBall();
+            mainBall.mesh.position.set(0, CONFIG.PHYSICS.RADIUS, 0);
+            holes.forEach(h => h.collected = false);
+            document.getElementById('prize-popup').classList.remove('show');
+            randomizePrizes();
+        }
+
+        function startAiming() {
+            resetBallForAiming();
+            gameState = 'AIMING';
+            updateUIState();
+        }
+
+        function releaseBall() {
+            if (gameState !== 'AIMING' || isPaused) return;
+            gameState = 'PLAYING';
+            document.getElementById('aim-ui').style.display = 'none';
+            if (balls[0]) balls[0].velocity.set((Math.random() - 0.5) * 6, 0, CONFIG.PHYSICS.LAUNCH_SPEED);
+        }
+
+        function spawnConfetti(position) {
+            const colors = [0xff00ff, 0x00ffff, 0xffff00, 0xffffff, 0xff0000];
+            for (let i = 0; i < 40; i++) {
+                const geometry = new THREE.PlaneGeometry(0.3, 0.3);
+                const material = new THREE.MeshBasicMaterial({ color: colors[Math.floor(Math.random() * colors.length)], side: THREE.DoubleSide });
+                const p = new THREE.Mesh(geometry, material);
+                p.position.copy(position); p.position.y += 1;
+                const velocity = new THREE.Vector3((Math.random() - 0.5) * 15, Math.random() * 20 + 10, (Math.random() - 0.5) * 15);
+                confettiParticles.push({ mesh: p, velocity, life: 2.0 });
+                scene.add(p);
+            }
+        }
+
+        function updateUIState() {
+            const isVisible = ['MENU', 'GAMEOVER'].includes(gameState);
+            const overlay = document.getElementById('overlay');
+            overlay.style.opacity = isVisible ? '1' : '0';
+            overlay.style.pointerEvents = isVisible ? 'auto' : 'none';
+            document.getElementById('aim-ui').style.display = gameState === 'AIMING' ? 'flex' : 'none';
+            
+            if (gameState === 'GAMEOVER') {
+                document.getElementById('main-title').innerText = "ROUND OVER";
+                document.getElementById('overlay-status').innerText = `GOT ${currentPrize}!`;
+                document.getElementById('footer-hint').innerText = "DRAG TO LOOK • PRESS SPACE TO PLAY AGAIN";
+            } else if (gameState === 'AIMING') {
+                document.getElementById('footer-hint').innerText = "SLIDE TO AIM • SPACE TO RELEASE";
+            } else if (gameState === 'MENU') {
+                document.getElementById('main-title').innerText = "SPHERE MASTER";
+                document.getElementById('overlay-status').innerText = "Prizes change every round!";
+                document.getElementById('footer-hint').innerText = "DRAG TO LOOK • PRESS SPACE TO PLAY";
+            }
+        }
+
+        function enterInspection() {
+            gameState = 'INSPECTING';
+            document.getElementById('overlay').style.opacity = '0';
+            document.getElementById('ui').style.opacity = '0';
+            document.getElementById('aim-ui').style.display = 'none';
+            document.getElementById('footer-hint').style.display = 'none';
+        }
+
+        function exitInspection() {
+            gameState = 'MENU';
+            document.getElementById('overlay').style.opacity = '1';
+            document.getElementById('ui').style.opacity = '1';
+            document.getElementById('footer-hint').style.display = 'block';
+        }
+
+        function updatePhysics(delta) {
+            for (let i = confettiParticles.length - 1; i >= 0; i--) {
+                const p = confettiParticles[i];
+                if (!isPaused) {
+                    p.velocity.y -= 35 * delta; p.mesh.position.addScaledVector(p.velocity, delta); p.life -= delta;
+                }
+                if (p.life <= 0) { scene.remove(p.mesh); confettiParticles.splice(i, 1); }
+            }
+            if (isPaused || (gameState !== 'PLAYING' && gameState !== 'FALLING')) return;
+            balls.forEach(ballData => {
+                if (ballData.isFalling || !ballData.mesh.visible) return;
+                ballData.velocity.z -= CONFIG.PHYSICS.GRAVITY * delta; 
+                ballData.mesh.position.x += ballData.velocity.x * delta;
+                ballData.mesh.position.z += ballData.velocity.z * delta;
+                ballData.velocity.multiplyScalar(CONFIG.PHYSICS.FRICTION);
+                if (Math.abs(ballData.mesh.position.x) > CONFIG.BOARD.WIDTH/2 - CONFIG.PHYSICS.RADIUS) {
+                    ballData.mesh.position.x = Math.sign(ballData.mesh.position.x) * (CONFIG.BOARD.WIDTH/2 - CONFIG.PHYSICS.RADIUS);
+                    ballData.velocity.x *= -CONFIG.PHYSICS.BOUNCE;
+                }
+                obstacles.forEach(obs => {
+                    const dx = ballData.mesh.position.x - obs.position.x, dz = ballData.mesh.position.z - obs.position.z;
+                    if (obs.geometry.type === 'CylinderGeometry') {
+                        const dist = Math.sqrt(dx*dx + dz*dz), threshold = CONFIG.PHYSICS.RADIUS + 0.18;
+                        if (dist < threshold) {
+                            const nx = dx / dist, nz = dz / dist;
+                            const dot = ballData.velocity.x * nx + ballData.velocity.z * nz;
+                            ballData.velocity.x = (ballData.velocity.x - 2 * dot * nx) * CONFIG.PHYSICS.BOUNCE;
+                            ballData.velocity.z = (ballData.velocity.z - 2 * dot * nz) * CONFIG.PHYSICS.BOUNCE;
+                            ballData.mesh.position.x = obs.position.x + nx * threshold;
+                            ballData.mesh.position.z = obs.position.z + nz * threshold;
+                            ballData.velocity.x += (Math.random() - 0.5) * 6; 
+                            if (obs.isSpecial) {
+                                obs.isSpecial = false; obs.material.color.set(0x333333);
+                                obs.material.emissiveIntensity = 0;
+                                const newBall = createBall(true);
+                                newBall.mesh.position.copy(ballData.mesh.position);
+                                newBall.velocity.set(-ballData.velocity.x, 0, ballData.velocity.z);
+                            }
+                        }
+                    } else {
+                        const hw = obs.geometry.parameters.width / 2, hd = obs.geometry.parameters.depth / 2;
+                        if (Math.abs(dx) < hw + CONFIG.PHYSICS.RADIUS && Math.abs(dz) < hd + CONFIG.PHYSICS.RADIUS) {
+                            if (Math.abs(dx)-hw > Math.abs(dz)-hd) {
+                                ballData.velocity.x *= -CONFIG.PHYSICS.BOUNCE;
+                                ballData.mesh.position.x = obs.position.x + Math.sign(dx) * (hw + CONFIG.PHYSICS.RADIUS);
+                            } else {
+                                ballData.velocity.z *= -CONFIG.PHYSICS.BOUNCE;
+                                ballData.mesh.position.z = obs.position.z + Math.sign(dz) * (hd + CONFIG.PHYSICS.RADIUS);
+                            }
+                        }
+                    }
+                });
+                holes.forEach(h => {
+                    if (!h.collected && Math.sqrt((ballData.mesh.position.x-h.position.x)**2 + (ballData.mesh.position.z-h.position.z)**2) < 0.9) {
+                        triggerScore(h.prizeName, h, ballData);
+                    }
+                });
+                if (ballData.mesh.position.z < -CONFIG.BOARD.DEPTH) {
+                    ballData.mesh.visible = false;
+                    if (balls.every(b => !b.mesh.visible)) gameOver();
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.05);
+            updatePhysics(delta);
+            if (gameState === 'PLAYING' || gameState === 'AIMING' || gameState === 'FALLING') {
+                const activeBall = balls.find(b => !b.isFalling && b.mesh.visible) || balls[0];
+                if (activeBall) {
+                    camera.position.lerp(new THREE.Vector3(activeBall.mesh.position.x * 0.4, 20, activeBall.mesh.position.z + 18), isPaused ? 0 : 0.15);
+                    camera.lookAt(activeBall.mesh.position.x, 0, activeBall.mesh.position.z - 8);
+                }
+            } else {
+                const x = cameraOrbit.target.x + cameraOrbit.radius * Math.sin(cameraOrbit.phi) * Math.cos(cameraOrbit.theta);
+                const y = cameraOrbit.target.y + cameraOrbit.radius * Math.cos(cameraOrbit.phi);
+                const z = cameraOrbit.target.z + cameraOrbit.radius * Math.sin(cameraOrbit.phi) * Math.sin(cameraOrbit.theta);
+                camera.position.lerp(new THREE.Vector3(x, y, z), isPaused ? 0 : 0.1);
+                camera.lookAt(cameraOrbit.target);
+            }
+            renderer.render(scene, camera);
+        }
+        window.onload = init;
+    </script>
+</body>
+</html>
