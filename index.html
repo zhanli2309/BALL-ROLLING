@@ -253,8 +253,8 @@
 
             <div class="space-y-4 pt-4 border-t border-white/10">
                 <h3 class="text-cyan-400 text-xs font-bold tracking-widest uppercase">Visual Style</h3>
-                <div class="grid grid-cols-3 gap-3">
-                    <div class="theme-card glass-panel p-3 text-center active" onclick="setTheme('CYBERPUNK')" id="theme-cyberpunk">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="theme-card glass-panel p-3 text-center" onclick="setTheme('CYBERPUNK')" id="theme-cyberpunk">
                         <div class="w-full h-8 bg-cyan-500/40 rounded mb-2"></div>
                         <span class="text-[10px] font-bold">CYBER</span>
                     </div>
@@ -265,6 +265,10 @@
                     <div class="theme-card glass-panel p-3 text-center" onclick="setTheme('RETRO')" id="theme-retro">
                         <div class="w-full h-8 bg-pink-600/40 rounded mb-2"></div>
                         <span class="text-[10px] font-bold">RETRO</span>
+                    </div>
+                    <div class="theme-card glass-panel p-3 text-center active" onclick="setTheme('NIGHT_MARKET')" id="theme-night_market">
+                        <div class="w-full h-8 bg-orange-500/40 rounded mb-2"></div>
+                        <span class="text-[10px] font-bold">MARKET</span>
                     </div>
                 </div>
 
@@ -342,7 +346,8 @@
         const THEMES = {
             CYBERPUNK: { bg: 0x020208, neon: 0x00f2ff, accent: 0xff00ff, gold: 0xffd700, pin: 0xffffff, surface: 0x020208 },
             MIDNIGHT: { bg: 0x050505, neon: 0xd4af37, accent: 0xffffff, gold: 0xffe082, pin: 0x333333, surface: 0x111111 },
-            RETRO: { bg: 0x110022, neon: 0xff00cc, accent: 0x00ffcc, gold: 0xffff00, pin: 0x5500ff, surface: 0x220044 }
+            RETRO: { bg: 0x110022, neon: 0xff00cc, accent: 0x00ffcc, gold: 0xffff00, pin: 0x5500ff, surface: 0x220044 },
+            NIGHT_MARKET: { bg: 0x0a0a0a, neon: 0xffa500, accent: 0xff4500, gold: 0xffd700, pin: 0xff6347, surface: 0x1a1a1a }
         };
 
         const ALL_PRIZES = [
@@ -382,7 +387,7 @@
             LAST_PRIZE: 'sphereMasterLastPrize_v3'
         };
 
-        let activeThemeKey = localStorage.getItem(STORAGE_KEYS.THEME) || 'CYBERPUNK';
+        let activeThemeKey = localStorage.getItem(STORAGE_KEYS.THEME) || 'NIGHT_MARKET';
         let currentTheme = THEMES[activeThemeKey];
 
         let scene, camera, renderer, boardGroup, obstacles = [], holes = [];
@@ -422,9 +427,36 @@
             updateCollectionUI();
         }
 
+        function createBackgroundTexture(theme) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            if (theme === 'NIGHT_MARKET') {
+                gradient.addColorStop(0, '#1a1a2e'); // top lighter
+                gradient.addColorStop(0.5, '#16213e'); // middle
+                gradient.addColorStop(1, '#0f0f23'); // bottom darker
+            } else {
+                const color = new THREE.Color(theme.bg);
+                const topColor = color.clone().lerp(new THREE.Color(0x000000), 0.3);
+                const bottomColor = color;
+                gradient.addColorStop(0, '#' + topColor.getHexString());
+                gradient.addColorStop(1, '#' + bottomColor.getHexString());
+            }
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            return texture;
+        }
+
         function setupScene() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(currentTheme.bg);
+            scene.background = createBackgroundTexture(activeThemeKey);
             scene.fog = new THREE.Fog(currentTheme.bg, 40, 160);
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -677,7 +709,7 @@
             activeThemeKey = key;
             currentTheme = THEMES[key];
             localStorage.setItem(STORAGE_KEYS.THEME, key);
-            scene.background.set(currentTheme.bg);
+            scene.background = createBackgroundTexture(key);
             scene.fog.color.set(currentTheme.bg);
             const accentLight = scene.getObjectByName("accentLight");
             if (accentLight) accentLight.color.set(currentTheme.accent);
